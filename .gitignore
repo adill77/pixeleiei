@@ -1,0 +1,19 @@
+# Node.js / React
+node_modules/
+dist/
+build/
+.npm/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Environment & OS files
+.env
+.DS_Store
+Thumbs.db
