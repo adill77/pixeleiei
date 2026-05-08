@@ -357,18 +357,78 @@ export default function App() {
   }, [clampOffset, setOffset, handleDraw])
 
   useEffect(() => {
-    const el = wrapperRef.current; if (!el) return
-    const onTouchStart = (e) => { if (e.touches.length === 1) { touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, ox: offsetRef.current.x, oy: offsetRef.current.y }; touchDidPan.current = false } }
-    const onTouchMove = (e) => {
-      if (!touchStart.current || e.touches.length !== 1) return
-      const dx = e.touches[0].clientX - touchStart.current.x, dy = e.touches[0].clientY - touchStart.current.y
-      if (!touchDidPan.current && Math.hypot(dx, dy) < PAN_THRESHOLD) return
-      touchDidPan.current = true; setOffset(clampOffset(touchStart.current.ox + dx, touchStart.current.oy + dy, scaleRef.current))
+  const el = wrapperRef.current; if (!el) return
+
+  let lastPinchDist = null;
+
+  const onTouchStart = (e) => {
+    if (e.touches.length === 1) {
+      touchStart.current = { 
+        x: e.touches[0].clientX, 
+        y: e.touches[0].clientY, 
+        ox: offsetRef.current.x, 
+        oy: offsetRef.current.y 
+      }
+      touchDidPan.current = false
+      lastPinchDist = null
+    } else if (e.touches.length === 2) {
+      // เริ่ม pinch
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      lastPinchDist = Math.hypot(dx, dy)
+      touchStart.current = null // ยกเลิก pan
     }
-    const onTouchEnd = (e) => { if (e.changedTouches.length === 1 && touchStart.current && !touchDidPan.current) handleDraw(e.changedTouches[0].clientX, e.changedTouches[0].clientY); touchStart.current = null }
-    el.addEventListener('touchstart', onTouchStart, { passive: false }); el.addEventListener('touchmove', onTouchMove, { passive: false }); el.addEventListener('touchend', onTouchEnd)
-    return () => { el.removeEventListener('touchstart', onTouchStart); el.removeEventListener('touchmove', onTouchMove); el.removeEventListener('touchend', onTouchEnd) }
-  }, [clampOffset, setOffset, handleDraw])
+  }
+
+  const onTouchMove = (e) => {
+    e.preventDefault()
+
+    if (e.touches.length === 2) {
+      // Pinch zoom
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.hypot(dx, dy)
+
+      if (lastPinchDist !== null) {
+        const ratio = dist / lastPinchDist
+        // จุด pivot = กึ่งกลางระหว่าง 2 นิ้ว
+        const pivotX = (e.touches[0].clientX + e.touches[1].clientX) / 2
+        const pivotY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+        zoomAt(scaleRef.current * ratio, pivotX, pivotY)
+      }
+      lastPinchDist = dist
+
+    } else if (e.touches.length === 1 && touchStart.current) {
+      // Pan
+      const dx = e.touches[0].clientX - touchStart.current.x
+      const dy = e.touches[0].clientY - touchStart.current.y
+      if (!touchDidPan.current && Math.hypot(dx, dy) < PAN_THRESHOLD) return
+      touchDidPan.current = true
+      setOffset(clampOffset(
+        touchStart.current.ox + dx, 
+        touchStart.current.oy + dy, 
+        scaleRef.current
+      ))
+    }
+  }
+
+  const onTouchEnd = (e) => {
+    if (e.touches.length < 2) lastPinchDist = null
+    if (e.changedTouches.length === 1 && touchStart.current && !touchDidPan.current) {
+      handleDraw(e.changedTouches[0].clientX, e.changedTouches[0].clientY)
+    }
+    if (e.touches.length === 0) touchStart.current = null
+  }
+
+  el.addEventListener('touchstart', onTouchStart, { passive: false })
+  el.addEventListener('touchmove', onTouchMove, { passive: false })
+  el.addEventListener('touchend', onTouchEnd)
+  return () => {
+    el.removeEventListener('touchstart', onTouchStart)
+    el.removeEventListener('touchmove', onTouchMove)
+    el.removeEventListener('touchend', onTouchEnd)
+  }
+}, [clampOffset, setOffset, handleDraw, zoomAt])
 
   return (
     <>
@@ -496,7 +556,7 @@ export default function App() {
           <div className="color-dot" style={{ backgroundColor: activeColor }} />
           {editingName ? (
             <>
-              <input autoFocus className="name-input" value={draftName} onChange={e => setDraftName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { setMyName(draftName); setEditingName(false) } }} onBlur={() => setEditingName(false)} />
+              <input autoFocus className="name-input" value={draftName} onChange={e => setDraftName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { setMyName(draftName); setEditingName(false) } }} onBlur={() => setTimeout(() => setEditingName(false), 150)} />
               <button className="name-ok" onClick={() => { setMyName(draftName); setEditingName(false) }}>OK</button>
             </>
           ) : (
