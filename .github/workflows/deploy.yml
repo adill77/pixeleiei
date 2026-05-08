@@ -1,0 +1,40 @@
+name: Deploy to DOKS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Login to Registry
+        run: doctl registry login
+
+      - name: Build & Push Frontend
+        run: |
+          docker build -t registry.digitalocean.com/my-appregistry/frontend:${{ github.sha }} ./frontend
+          docker push registry.digitalocean.com/my-appregistry/frontend:${{ github.sha }}
+
+      - name: Build & Push Backend
+        run: |
+          docker build -t registry.digitalocean.com/my-appregistry/backend:${{ github.sha }} ./backend
+          docker push registry.digitalocean.com/my-appregistry/backend:${{ github.sha }}
+
+      - name: Save kubeconfig
+        run: doctl kubernetes cluster kubeconfig save k8s-1-35-1-do-5-sgp1-1778232104179
+
+      - name: Deploy to k8s
+        run: |
+          kubectl set image deployment/frontend frontend=registry.digitalocean.com/my-appregistry/frontend:${{ github.sha }}
+          kubectl set image deployment/backend backend=registry.digitalocean.com/my-appregistry/backend:${{ github.sha }}
+          kubectl rollout status deployment/frontend
+          kubectl rollout status deployment/backend
+          
