@@ -1,3 +1,4 @@
+import React from 'react';
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 const WORLD_SIZE = 2000
@@ -5,9 +6,18 @@ const MAX_SCALE = 5
 const PAN_THRESHOLD = 5
 const COOLDOWN_MS = 1000
 
+
 const PALETTE = [
-  '#FFFFFF', '#FF3B30', '#FF9500', '#FFCC00', '#4CD964', '#5AC8FA', 
-  '#007AFF', '#5856D6', '#FF2D55', '#8E8E93', '#000000', '#8B572A'
+  // Row 1: Classic
+  '#FFFFFF', '#000000',  '#FF3B30', '#FF9500',
+  // Row 2: Warm
+  '#FFCC00', '#FF6B6B', '#FF8E53', '#FFB347',
+  // Row 3: Pastel 🎨
+  '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9',
+  '#BAE1FF', '#E8BAFF', '#FFB3F0', '#C9FFE5',
+  // Row 4: Cool
+  '#4CD964', '#5AC8FA', '#007AFF', '#5856D6',
+  '#FF2D55', '#8E8E93', '#8B572A', '#34C759',
 ]
 const HEX_TO_RGBA = PALETTE.map(hex => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -76,6 +86,11 @@ export default function App() {
   const mouseDown = useRef(null) 
   const didPan = useRef(false)
 
+  const [paletteOffset, setPaletteOffset] = useState(0)
+  const VISIBLE = 8
+
+  const [slideDir, setSlideDir] = useState(null)
+
   const setActiveColor = useCallback((color) => {
     setActiveColorState(color);
     localStorage.setItem('pixel_color', color);
@@ -119,18 +134,38 @@ export default function App() {
   useEffect(() => { myNameRef.current = myName }, [myName])
 
   const playPopSound = useCallback(() => {
-    try {
-      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
-      const ctx = audioCtxRef.current
-      if (ctx.state === 'suspended') ctx.resume()
-      const osc = ctx.createOscillator(), gain = ctx.createGain()
-      osc.connect(gain); gain.connect(ctx.destination)
-      osc.type = 'sine'; osc.frequency.setValueAtTime(600, ctx.currentTime)
-      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.05)
-      gain.gain.setValueAtTime(0.4, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05)
-      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.05)
-    } catch (e) { /* silent fail */ }
+  try {
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
+    const ctx = audioCtxRef.current
+    if (ctx.state === 'suspended') ctx.resume()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(600, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.05)
+    gain.gain.setValueAtTime(0.4, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05)
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.05)
+  } catch(e) {}
+}, [])
+
+  const playScrollSound = useCallback(() => {
+  try {
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
+    const ctx = audioCtxRef.current
+    if (ctx.state === 'suspended') ctx.resume()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(800, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(1100, ctx.currentTime + 0.08)
+    gain.gain.setValueAtTime(0.2, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08)
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.08)
+  } catch(e) {}
+
   }, [])
 
   const setScale = useCallback((val) => {
@@ -198,7 +233,7 @@ export default function App() {
     if (canvas) {
       const ctx = canvas.getContext('2d')
       ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE)
-      ctx.fillStyle = '#E5E5E5' 
+      ctx.fillStyle = 'rgba(0,0,0,0.06)'
       for (let i = 0; i <= WORLD_SIZE; i += 10) { ctx.fillRect(i, 0, 1, WORLD_SIZE); ctx.fillRect(0, i, WORLD_SIZE, 1) }
     }
     let ws, isUnmounted = false;
@@ -268,7 +303,7 @@ export default function App() {
             ctx.putImageData(imgData, 0, 0);
             
             // วาดเส้นตารางทับลงไปอีกรอบให้สวยงาม
-            ctx.fillStyle = '#E5E5E5';
+            ctx.fillStyle = 'rgba(0,0,0,0.06)';
             for (let i = 0; i <= WORLD_SIZE; i += 10) {
               ctx.fillRect(i, 0, 1, WORLD_SIZE);
               ctx.fillRect(0, i, WORLD_SIZE, 1);
@@ -301,45 +336,64 @@ export default function App() {
   }, [clampOffset, drawPixel, setOffset])
 
   const handleDraw = useCallback((clientX, clientY) => {
-    const now = Date.now()
-    if (now - lastDrawTimeRef.current < COOLDOWN_MS) return
-    const canvas = canvasRef.current; if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const x = Math.floor((clientX - rect.left) / scaleRef.current / 10) * 10
-    const y = Math.floor((clientY - rect.top) / scaleRef.current / 10) * 10
-    if (x < 0 || x >= WORLD_SIZE || y < 0 || y >= WORLD_SIZE) return
-    lastDrawTimeRef.current = now; setIsCoolingDown(true); setTimeout(() => setIsCoolingDown(false), COOLDOWN_MS); playPopSound()
-    
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const colorIdx = PALETTE.indexOf(activeColorRef.current);
-      if (colorIdx !== -1) {
-        // Create 6-byte binary payload: [Type(1), X(2), Y(2), Color(1)]
-        const buffer = new ArrayBuffer(6);
-        const view = new DataView(buffer);
-        view.setUint8(0, 1); // Type 1 = Draw
-        view.setUint16(1, x, false); // BigEndian
-        view.setUint16(3, y, false); // BigEndian
-        view.setUint8(5, colorIdx);
-        wsRef.current.send(buffer);
-      }
+  const now = Date.now()
+  if (now - lastDrawTimeRef.current < COOLDOWN_MS) return
+  const canvas = canvasRef.current; if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  const x = Math.floor((clientX - rect.left) / scaleRef.current / 10) * 10
+  const y = Math.floor((clientY - rect.top) / scaleRef.current / 10) * 10
+  if (x < 0 || x >= WORLD_SIZE || y < 0 || y >= WORLD_SIZE) return
+  
+  lastDrawTimeRef.current = now
+  setIsCoolingDown(true)
+  setTimeout(() => setIsCoolingDown(false), COOLDOWN_MS)
+  playPopSound()
+
+  // ✅ drawPixel ทันทีเลย ไม่ต้องรอ animation
+  drawPixel(x, y, activeColorRef.current)
+
+  if (wsRef.current?.readyState === WebSocket.OPEN) {
+    const colorIdx = PALETTE.indexOf(activeColorRef.current)
+    if (colorIdx !== -1) {
+      const buffer = new ArrayBuffer(6)
+      const view = new DataView(buffer)
+      view.setUint8(0, 1)
+      view.setUint16(1, x, false)
+      view.setUint16(3, y, false)
+      view.setUint8(5, colorIdx)
+      wsRef.current.send(buffer)
     }
-    
-    // We don't queue the binary message for local leaderboard update easily, 
-    // so we rely on the server's periodic leaderboard broadcast or 
-    // send a legacy JSON draw just for the leaderboard if needed.
-    // For Phase 3, the server broadcasts the leaderboard, so we just do visual pop.
-    
-    const popId = Date.now() + Math.random()
-    setPopPixels(prev => [...prev, { id: popId, x, y, color: activeColorRef.current }])
-    setTimeout(() => { drawPixel(x, y, activeColorRef.current); setPopPixels(prev => prev.filter(p => p.id !== popId)) }, 300)
-  }, [drawPixel, playPopSound])
+  }
+
+  // Animation แค่ overlay ไม่ affect canvas จริง
+  const popId = Date.now() + Math.random()
+  setPopPixels(prev => [...prev, { id: popId, x, y, color: activeColorRef.current }])
+  setTimeout(() => setPopPixels(prev => prev.filter(p => p.id !== popId)), 500)
+}, [drawPixel, playPopSound])
 
   useEffect(() => {
-    const el = wrapperRef.current; if (!el) return
-    const onWheel = (e) => { e.preventDefault(); zoomAt(scaleRef.current * (1 + (e.ctrlKey ? -e.deltaY * 0.012 : -e.deltaY * 0.0018)), e.clientX, e.clientY) }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [zoomAt])
+  const el = wrapperRef.current; if (!el) return
+  const onWheel = (e) => {
+    e.preventDefault()
+    if (e.ctrlKey) {
+      // Pinch touchpad หรือ Ctrl+scroll = zoom
+      zoomAt(
+        scaleRef.current * (1 - e.deltaY * 0.01),
+        e.clientX,
+        e.clientY
+      )
+    } else {
+      // Scroll ปกติ = pan
+      setOffset(prev => clampOffset(
+        prev.x - e.deltaX,
+        prev.y - e.deltaY,
+        scaleRef.current
+      ))
+    }
+  }
+  el.addEventListener('wheel', onWheel, { passive: false })
+  return () => el.removeEventListener('wheel', onWheel)
+}, [zoomAt, clampOffset, setOffset])
 
   useEffect(() => {
     const el = wrapperRef.current; if (!el) return
@@ -356,198 +410,281 @@ export default function App() {
     return () => { el.removeEventListener('mousedown', onDown); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [clampOffset, setOffset, handleDraw])
 
-  useEffect(() => {
-  const el = wrapperRef.current; if (!el) return
-
-  let lastPinchDist = null;
-
-  const onTouchStart = (e) => {
-    if (e.touches.length === 1) {
-      touchStart.current = { 
-        x: e.touches[0].clientX, 
-        y: e.touches[0].clientY, 
-        ox: offsetRef.current.x, 
-        oy: offsetRef.current.y 
-      }
-      touchDidPan.current = false
-      lastPinchDist = null
-    } else if (e.touches.length === 2) {
-      // เริ่ม pinch
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      lastPinchDist = Math.hypot(dx, dy)
-      touchStart.current = null // ยกเลิก pan
-    }
-  }
-
-  const onTouchMove = (e) => {
-    e.preventDefault()
-
-    if (e.touches.length === 2) {
-      // Pinch zoom
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      const dist = Math.hypot(dx, dy)
-
-      if (lastPinchDist !== null) {
-        const ratio = dist / lastPinchDist
-        // จุด pivot = กึ่งกลางระหว่าง 2 นิ้ว
-        const pivotX = (e.touches[0].clientX + e.touches[1].clientX) / 2
-        const pivotY = (e.touches[0].clientY + e.touches[1].clientY) / 2
-        zoomAt(scaleRef.current * ratio, pivotX, pivotY)
-      }
-      lastPinchDist = dist
-
-    } else if (e.touches.length === 1 && touchStart.current) {
-      // Pan
-      const dx = e.touches[0].clientX - touchStart.current.x
-      const dy = e.touches[0].clientY - touchStart.current.y
-      if (!touchDidPan.current && Math.hypot(dx, dy) < PAN_THRESHOLD) return
-      touchDidPan.current = true
-      setOffset(clampOffset(
-        touchStart.current.ox + dx, 
-        touchStart.current.oy + dy, 
-        scaleRef.current
-      ))
-    }
-  }
-
-  const onTouchEnd = (e) => {
-    if (e.touches.length < 2) lastPinchDist = null
-    if (e.changedTouches.length === 1 && touchStart.current && !touchDidPan.current) {
-      handleDraw(e.changedTouches[0].clientX, e.changedTouches[0].clientY)
-    }
-    if (e.touches.length === 0) touchStart.current = null
-  }
-
-  el.addEventListener('touchstart', onTouchStart, { passive: false })
-  el.addEventListener('touchmove', onTouchMove, { passive: false })
-  el.addEventListener('touchend', onTouchEnd)
-  return () => {
-    el.removeEventListener('touchstart', onTouchStart)
-    el.removeEventListener('touchmove', onTouchMove)
-    el.removeEventListener('touchend', onTouchEnd)
-  }
-}, [clampOffset, setOffset, handleDraw, zoomAt])
+  
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&display=swap');
-        *, *::before, *::after { box-sizing: border-box; }
-        body { margin: 0; overflow: hidden; background: #0f0f13; font-family: 'DM Mono', monospace; }
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&display=swap');
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; overflow: hidden; background: #1a1a2e; font-family: 'DM Mono', monospace; }
 
-        .world-wrapper {
-          position: fixed; inset: 0; overflow: hidden;
-          touch-action: none; user-select: none; background: #0f0f13;
-          cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z' fill='%23FFF' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 3 3, default;
-        }
-        .world-wrapper.on-cooldown { cursor: not-allowed; }
-        .world-wrapper.is-grabbing { cursor: grabbing !important; }
+  .world-wrapper {
+    position: fixed; inset: 0; overflow: hidden;
+    touch-action: none; user-select: none;
+    background: 
+      radial-gradient(ellipse at 20% 50%, rgba(120,80,255,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(255,100,100,0.06) 0%, transparent 50%),
+      #1a1a2e;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z' fill='%23FFF' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 3 3, default;
+  }
+  .world-wrapper.on-cooldown { cursor: not-allowed; }
+  .world-wrapper.is-grabbing { cursor: grabbing !important; }
 
-        .canvas-transform {
-          position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform;
-        }
+  .canvas-transform {
+    position: absolute; top: 0; left: 0;
+    transform-origin: 0 0; will-change: transform;
+    image-rendering: pixelated;        /* ✅ เพิ่มตรงนี้ */
+    image-rendering: crisp-edges; 
+    /* pixel art border feel */
+    filter: drop-shadow(0 0 40px rgba(0,0,0,0.8));
+  }
 
-        .pixel-spring {
-          position: absolute; width: 10px; height: 10px; pointer-events: none; z-index: 10;
-          animation: springPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-        }
-        @keyframes springPop {
-          0% { transform: scale(0.1); border-radius: 4px; }
-          50% { transform: scale(1.35); border-radius: 2px; }
-          100% { transform: scale(1); border-radius: 0; }
-        }
+  /* 🎯 Animation เด้งดึ๋งใหม่ */
+  .pixel-spring {
+    position: absolute; width: 10px; height: 10px;
+    pointer-events: none; z-index: 10;
+    animation: bouncePop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.8) forwards;
+    border-radius: 2px;
+  }
+  @keyframes bouncePop {
+    0%   { transform: scale(0) rotate(-15deg); opacity: 1; }
+    40%  { transform: scale(1.6) rotate(5deg); opacity: 1; }
+    65%  { transform: scale(0.85) rotate(-2deg); opacity: 1; }
+    80%  { transform: scale(1.1) rotate(1deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 0; }
+  }
 
-        .hud { position: fixed; inset: 0; pointer-events: none; z-index: 30; }
+  /* ripple effect */
+  .pixel-ripple {
+    position: absolute; width: 10px; height: 10px;
+    pointer-events: none; z-index: 9; border-radius: 2px;
+    animation: rippleOut 0.5s ease-out forwards;
+    border: 2px solid currentColor;
+  }
+  @keyframes rippleOut {
+    0%   { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(3.5); opacity: 0; }
+  }
 
-        .my-info {
-          position: absolute; top: 14px; left: 14px; pointer-events: all;
-          display: flex; align-items: center; gap: 8px;
-          background: rgba(12,12,16,0.9); backdrop-filter: blur(16px);
-          border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 7px 12px;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.5);
-        }
-        .color-dot { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.3); flex-shrink: 0; }
-        .name-display {
-          color: rgba(255,255,255,0.8); font-size: 12px; letter-spacing: 0.04em;
-          cursor: pointer; white-space: nowrap; transition: color 0.15s;
-        }
-        .name-display:hover { color: #fff; }
-        .name-input {
-          background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.18);
-          border-radius: 6px; color: #fff; font-family: inherit; font-size: 12px;
-          padding: 3px 8px; outline: none; width: 120px;
-        }
-        .name-ok {
-          height: 24px; padding: 0 9px; border-radius: 6px;
-          border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.09);
-          color: rgba(255,255,255,0.75); cursor: pointer; font-family: inherit; font-size: 11px;
-        }
-        .name-ok:hover { background: rgba(255,255,255,0.18); color: #fff; }
+  .hud { position: fixed; inset: 0; pointer-events: none; z-index: 30; }
 
-        .pan-hint {
-          position: absolute; bottom: 20px; left: 14px;
-          color: rgba(255,255,255,0.22); font-size: 10px; letter-spacing: 0.06em;
-        }
+  .my-info {
+    position: absolute; top: 14px; left: 14px; pointer-events: all;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(10,10,20,0.85); backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 8px 14px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .color-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.4); flex-shrink: 0;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .name-display {
+    color: rgba(255,255,255,0.85); font-size: 12px; letter-spacing: 0.04em;
+    cursor: pointer; white-space: nowrap; transition: color 0.15s;
+  }
+  .name-display:hover { color: #fff; }
+  .name-input {
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px; color: #fff; font-family: inherit; font-size: 12px;
+    padding: 3px 8px; outline: none; width: 120px;
+  }
+  .name-ok {
+    height: 24px; padding: 0 9px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.09);
+    color: rgba(255,255,255,0.75); cursor: pointer; font-family: inherit; font-size: 11px;
+  }
 
-        .lb-toggle {
-          position: absolute; top: 14px; right: 14px; pointer-events: all;
-          height: 36px; padding: 0 16px; border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.09); background: rgba(12,12,16,0.9); backdrop-filter: blur(16px);
-          color: rgba(255,255,255,0.72); font-size: 12px; font-weight: 600; letter-spacing: 0.05em;
-          cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(0,0,0,0.45);
-        }
-        .lb-panel {
-          position: absolute; top: 60px; right: 14px; width: 250px; pointer-events: all;
-          background: rgba(15, 15, 20, 0.95); backdrop-filter: blur(20px);
-          border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden;
-          box-shadow: 0 16px 48px rgba(0,0,0,0.5); transition: opacity 0.22s, transform 0.22s;
-        }
-        .lb-panel.hidden { opacity: 0; transform: translateY(-8px) scale(0.97); pointer-events: none; }
-        .lb-header { padding: 16px 16px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .lb-title { color: #fff; font-size: 11px; letter-spacing: 0.15em; font-weight: 600; margin: 0; }
-        .lb-list { list-style: none; padding: 8px 0; margin: 0; max-height: 320px; overflow-y: auto; }
-        .lb-row { display: flex; align-items: center; padding: 8px 16px; gap: 10px; border-left: 2px solid transparent; }
-        .lb-rank-badge { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.5); }
-        .lb-player-color { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); }
-        .lb-name { color: rgba(255,255,255,0.9); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; }
-        .lb-score { color: #fff; font-size: 12px; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+  .lb-toggle {
+    position: absolute; top: 14px; right: 14px; pointer-events: all;
+    height: 36px; padding: 0 16px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(10,10,20,0.85); backdrop-filter: blur(20px);
+    color: rgba(255,255,255,0.8); font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    transition: all 0.2s;
+  }
+  .lb-toggle:hover { background: rgba(30,30,50,0.95); color: #fff; }
 
-        .palette-panel {
-          position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
-          pointer-events: all; display: flex; gap: 6px; padding: 8px 12px;
-          background: rgba(12,12,16,0.9); backdrop-filter: blur(16px);
-          border: 1px solid rgba(255,255,255,0.08); border-radius: 30px;
-          box-shadow: 0 6px 28px rgba(0,0,0,0.5);
-        }
-        .color-swatch {
-          width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
-          border: 2px solid rgba(255,255,255,0.05);
-          transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), border-color 0.2s;
-          position: relative; overflow: hidden; 
-        }
-        .color-swatch:hover { transform: scale(1.15); }
-        .color-swatch.active { transform: scale(1.25); border-color: #fff; box-shadow: 0 0 10px rgba(255,255,255,0.3); }
-        
-        .zoom-panel {
-          position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-          pointer-events: all; display: flex; align-items: center; gap: 5px;
-          background: rgba(12,12,16,0.9); backdrop-filter: blur(16px);
-          border: 1px solid rgba(255,255,255,0.08); border-radius: 40px;
-          padding: 6px 12px; box-shadow: 0 6px 28px rgba(0,0,0,0.5);
-        }
-        .zoom-btn {
-          width: 26px; height: 26px; border-radius: 50%;
-          border: 1px solid rgba(255,255,255,0.11); background: rgba(255,255,255,0.06);
-          color: #fff; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-        }
-      `}</style>
+  .lb-panel {
+    position: absolute; top: 60px; right: 14px; width: 240px; pointer-events: all;
+    background: rgba(10,10,20,0.92); backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6); transition: opacity 0.22s, transform 0.22s;
+  }
+  .lb-panel.hidden { opacity: 0; transform: translateY(-8px) scale(0.97); pointer-events: none; }
+  .lb-header { padding: 14px 16px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .lb-title { color: rgba(255,255,255,0.5); font-size: 10px; letter-spacing: 0.2em; font-weight: 600; margin: 0; text-transform: uppercase; }
+  .lb-list { list-style: none; padding: 6px 0; margin: 0; max-height: 300px; overflow-y: auto; }
+  .lb-row { display: flex; align-items: center; padding: 7px 14px; gap: 10px; transition: background 0.15s; }
+  .lb-row:hover { background: rgba(255,255,255,0.03); }
+  .lb-rank-badge {
+    width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.05); border-radius: 4px;
+    font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.4);
+  }
+  .lb-rank-badge.top { color: #FFD700; background: rgba(255,215,0,0.1); }
+  .lb-player-color { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .lb-name { color: rgba(255,255,255,0.85); font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-score { color: #fff; font-size: 11px; background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 10px; font-weight: 600; }
+
+  /* 🎨 Palette แบบ grid */
+  .palette-panel {
+  position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+  pointer-events: all; display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: rgba(10,10,20,0.9); backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  overflow: visible;
+  padding: 12px 14px;
+}
+
+.palette-track {
+  display: flex; gap: 6px;
+  overflow: visible;
+}
+
+@keyframes slideLeft {
+  0%   { transform: translateX(20px); opacity: 0.3; }
+  100% { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideRight {
+  0%   { transform: translateX(-20px); opacity: 0.3; }
+  100% { transform: translateX(0);     opacity: 1; }
+}
+
+.palette-track.slide-left  { animation: slideLeft  0.25s cubic-bezier(0.175, 0.885, 0.32, 1.4); }
+.palette-track.slide-right { animation: slideRight 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.4); }
+
+.palette-arrow {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.07);
+  color: #fff; font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, transform 0.15s;
+  line-height: 1;
+}
+.palette-arrow:hover:not(:disabled) { 
+  background: rgba(255,255,255,0.18); 
+  transform: scale(1.1); 
+}
+.palette-arrow:disabled { 
+  opacity: 0.25; cursor: not-allowed; 
+}
+
+  .color-swatch {
+  width: 36px; height: 36px;
+  border-radius: 10px; cursor: pointer;
+  border: none;
+  position: relative;
+  transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.8);
+
+  /* 3D Candy Effect */
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.45),   /* highlight บน */
+    inset 0 -3px 0 rgba(0,0,0,0.25),         /* shadow ล่าง */
+    inset 3px 0 0 rgba(255,255,255,0.1),      /* highlight ซ้าย */
+    inset -3px 0 0 rgba(0,0,0,0.1),           /* shadow ขวา */
+    0 4px 0 rgba(0,0,0,0.3),                  /* drop shadow */
+    0 6px 12px rgba(0,0,0,0.3);               /* ambient shadow */
+
+  /* filter เพิ่มความอิ่มสี */
+  filter: saturate(1.1);
+}
+
+.color-swatch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  background: linear-gradient(
+    160deg,
+    rgba(255,255,255,0.35) 0%,
+    rgba(255,255,255,0.0) 50%
+  );
+  pointer-events: none;
+}
+
+.color-swatch:hover {
+  transform: translateY(-3px) scale(1.08);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.45),
+    inset 0 -3px 0 rgba(0,0,0,0.25),
+    0 7px 0 rgba(0,0,0,0.3),
+    0 10px 16px rgba(0,0,0,0.35);
+}
+
+.color-swatch:active {
+  transform: translateY(2px) scale(0.97);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.45),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    0 2px 0 rgba(0,0,0,0.3),
+    0 3px 6px rgba(0,0,0,0.25);
+}
+
+.color-swatch.active {
+  transform: translateY(1px) scale(1.05);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.45),
+    inset 0 -2px 0 rgba(0,0,0,0.25),
+    0 3px 0 rgba(0,0,0,0.3),
+    0 0 0 2.5px #fff,
+    0 0 16px rgba(255,255,255,0.3),
+    0 5px 12px rgba(0,0,0,0.3);
+}
+  .color-swatch:hover { transform: scale(1.2) translateY(-2px); border-color: rgba(255,255,255,0.4); }
+  .color-swatch.active {
+    transform: scale(1.3) translateY(-3px);
+    border-color: #fff;
+    box-shadow: 0 0 12px rgba(255,255,255,0.4), inset 0 1px 0 rgba(255,255,255,0.4), 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  .zoom-panel {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    pointer-events: all; display: flex; align-items: center; gap: 6px;
+    background: rgba(10,10,20,0.85); backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 40px;
+    padding: 6px 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .zoom-btn {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06);
+    color: #fff; font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, transform 0.15s;
+  }
+  .zoom-btn:hover { background: rgba(255,255,255,0.15); transform: scale(1.1); }
+  .zoom-btn:active { transform: scale(0.92); }
+
+  /* Cooldown bar */
+  .cooldown-bar {
+    position: absolute; bottom: 0; left: 0; height: 2px;
+    background: linear-gradient(90deg, #007AFF, #5856D6);
+    transition: width 0.05s linear;
+    border-radius: 0 2px 2px 0;
+  }
+  canvas {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+`}</style>
 
       <div ref={wrapperRef} className={`world-wrapper ${isCoolingDown ? 'on-cooldown' : ''}`}>
         <div className="canvas-transform" style={{ transform: `translate(${Math.round(offset.x)}px, ${Math.round(offset.y)}px) scale(${scale})` }}>
           <canvas ref={canvasRef} width={WORLD_SIZE} height={WORLD_SIZE} style={{ display: 'block', imageRendering: 'pixelated' }} />
-          {popPixels.map(p => <div key={p.id} className="pixel-spring" style={{ left: p.x, top: p.y, backgroundColor: p.color }} />)}
+          {popPixels.map(p => (
+  <React.Fragment key={p.id}>
+    <div className="pixel-spring" style={{ left: p.x, top: p.y, backgroundColor: p.color }} />
+    <div className="pixel-ripple" style={{ left: p.x, top: p.y, color: p.color }} />
+  </React.Fragment>
+))}
         </div>
       </div>
 
@@ -570,7 +707,7 @@ export default function App() {
           <ul className="lb-list">
             {leaderboard.map((player, i) => (
               <li key={i} className="lb-row">
-                <div className="lb-rank-badge">{i + 1}</div>
+                <div className={`lb-rank-badge ${i < 3 ? 'top' : ''}`}>{i + 1}</div>
                 <div className="lb-player-color" style={{ backgroundColor: player.color }} />
                 <span className="lb-name">{player.name}</span>
                 <span className="lb-score">{player.score}</span>
@@ -580,8 +717,39 @@ export default function App() {
         </div>
 
         <div className="palette-panel">
-          {PALETTE.map(c => <div key={c} className={`color-swatch ${activeColor === c ? 'active' : ''}`} style={{ backgroundColor: c }} onClick={() => setActiveColor(c)} />)}
-        </div>
+  <button 
+  className="palette-arrow" 
+  onClick={() => {
+    setPaletteOffset(o => Math.max(0, o - 1))
+    setSlideDir('right')
+    playScrollSound()
+    setTimeout(() => setSlideDir(null), 250)
+  }}
+  disabled={paletteOffset === 0}
+>‹</button>
+
+<div className={`palette-track ${slideDir ? 'slide-' + slideDir : ''}`}>
+    {PALETTE.slice(paletteOffset, paletteOffset + VISIBLE).map(c => (
+      <div 
+        key={c} 
+        className={`color-swatch ${activeColor === c ? 'active' : ''}`} 
+        style={{ backgroundColor: c }} 
+        onClick={() => setActiveColor(c)} 
+      />
+    ))}
+  </div>
+
+  <button 
+  className="palette-arrow" 
+  onClick={() => {
+    setPaletteOffset(o => Math.min(PALETTE.length - VISIBLE, o + 1))
+    setSlideDir('left')
+    playScrollSound()
+    setTimeout(() => setSlideDir(null), 250)
+  }}
+  disabled={paletteOffset >= PALETTE.length - VISIBLE}
+>›</button>
+</div>
 
         <div className="zoom-panel">
           <button className="zoom-btn" onClick={() => zoomAt(scaleRef.current / 1.3, window.innerWidth / 2, window.innerHeight / 2)}>−</button>

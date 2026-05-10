@@ -30,8 +30,15 @@ const (
 
 // Palette mapping for binary protocol
 var palette = []string{
-	"#FFFFFF", "#FF3B30", "#FF9500", "#FFCC00", "#4CD964", "#5AC8FA",
-	"#007AFF", "#5856D6", "#FF2D55", "#8E8E93", "#000000", "#8B572A",
+	"#FFFFFF", "#000000", "#FF3B30", "#FF9500",
+	// Row 2: Warm
+	"#FFCC00", "#FF6B6B", "#FF8E53", "#FFB347",
+	// Row 3: Pastel 🎨
+	"#FFB3BA", "#FFDFBA", "#FFFFBA", "#BAFFC9",
+	"#BAE1FF", "#E8BAFF", "#FFB3F0", "#C9FFE5",
+	// Row 4: Cool
+	"#4CD964", "#5AC8FA", "#007AFF", "#5856D6",
+	"#FF2D55", "#8E8E93", "#8B572A", "#34C759",
 }
 
 var ctx = context.Background()
